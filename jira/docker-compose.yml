@@ -1,0 +1,32 @@
+version: '3'
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=jiradb
+      - MYSQL_USER=jira
+      - MYSQL_PASSWORD=jira
+    volumes:
+      - /srv/mysql:/var/lib/mysql
+    command: ["--character-set-server=utf8", "--collation-server=utf8_bin"]
+
+  jira:
+    image: blacklabelops/jira:7.10.0
+    privileged: true
+    container_name: jira
+    depends_on:
+      - mysql
+    ports:
+      - "80:8080"
+    user: 0:0
+    environment:
+      - DOCKER_WAIT_HOST=mysql
+      - DOCKER_WAIT_PORT=3306
+      - JIRA_DATABASE_URL=mysql://jira@mysql/jiradb
+      - JIRA_DB_PASSWORD=jira
+      - "CATALINA_OPTS= -Xms2g -Xmx6g"
+    volumes:
+      - /srv/jira:/var/atlassian/jira

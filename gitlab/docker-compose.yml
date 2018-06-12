@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  mysql:
+    image: gitlab/gitlab-ce
+    container_name: gitlab
+    hostname: gitlab
+    privileged: true
+    ports:
+      - "22:22"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /srv/gitlab/config:/etc/gitlab
+      - /srv/gitlab/logs:/var/log/gitlab
+      - /srv/gitlab/data:/var/opt/gitlab

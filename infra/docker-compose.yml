@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  dns:
+    image: andyshinn/dnsmasq
+    container_name: dns
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "53:53"
+      - "53:53/udp"
+    volumes:
+      - './etc_dnsmasq.conf:/etc/dnsmasq.conf:rw'
+      - './etc_resolv.dnsmasq:/etc/resolv.dnsmasq:rw'
+      - './etc_dnsmasq.hosts:/etc/dnsmasq.hosts:rw'

@@ -1,0 +1,14 @@
+# ops
+172.31.0.254	dns ntp dns.trustchain.com ntp.trustchain.com
+172.31.0.253	nas nas.trustchain.com
+172.31.3.101	vcenter vcenter.trustchain.com
+
+
+172.23.0.100	ldap ldap.trustchain.com
+172.23.0.101	jira jira.trustchain.com
+172.23.0.102	docs docs.trustchain.com
+172.23.0.111	gerrit gerrit.trustchain.com
+172.23.0.112	gitlab gitlab.trustchain.com
+172.23.0.121	jenkins jenkins.trustchain.com
+172.23.0.131	files mirrors files.trustchain.com mirrors.trustchain.com
+172.23.0.132	registry registry.trustchain.com

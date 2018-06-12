@@ -1,0 +1,34 @@
+version: '3'
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=confluencedb
+      - MYSQL_USER=confluence
+      - MYSQL_PASSWORD=confluence
+    volumes:
+      - /srv/mysql:/var/lib/mysql
+    command: ["--character-set-server=utf8", "--collation-server=utf8_bin", "--default-storage-engine=INNODB", "--max_allowed_packet=256M", "--innodb_log_file_size=2GB", "--binlog_format=row", "--transaction-isolation=READ-COMMITTED"]
+
+  confluence:
+    image: blacklabelops/confluence:6.8.2
+    privileged: true
+    container_name: confluence
+    depends_on:
+      - mysql
+    ports:
+      - "80:8090"
+      - "8091:8091"
+    user: 0:0
+    environment:
+      - DOCKER_WAIT_HOST=mysql
+      - DOCKER_WAIT_PORT=3306
+      - CATALINA_PARAMETER1=-Xms
+      - CATALINA_PARAMETER_VALUE1=2g
+      - CATALINA_PARAMETER1=-Xmx
+      - CATALINA_PARAMETER_VALUE1=4g
+    volumes:
+      - /srv/confluence:/var/atlassian/confluence

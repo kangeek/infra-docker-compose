@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  ldap:
+    image: osixia/openldap
+    container_name: ldap
+    ports:
+      - "389:389"
+      - "636:636"
+    environment:
+      - LDAP_ORGANISATION=TrustChainTech
+      - LDAP_DOMAIN=trustchain.com
+      - LDAP_ADMIN_PASSWORD=admin
+    volumes:
+      - /srv/ldap/var:/var/lib/ldap
+      - /srv/ldap/etc:/etc/ldap/slapd.d
+
+  ldap-admin:
+    image: osixia/phpldapadmin
+    container_name: ldap-admin
+    ports:
+      - "443:443"
+    environment:
+      - PHPLDAPADMIN_LDAP_HOSTS=ldap
