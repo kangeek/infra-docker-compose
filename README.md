@@ -391,5 +391,101 @@ Gerrit要连接OpenLDAP，因此需要在启动前将配置文件提供出来。
 5. 初始化完成后，再把docker-compose.yml中初始化的那行注释掉，然后用后台方式启动gerrit即可：`docker-compose up -d gerrit`。
 
 
-不过以上过程都做成了脚本，直接执行源码中的`newly-install.sh`脚本即可（注意：该脚本会清楚数据，主要用于第一次部署）。
+不过以上过程都做成了脚本，直接执行源码中的`newly-install.sh`脚本即可（注意：该脚本会清除数据，主要用于第一次部署）。
 
+
+
+## 1.5 Gitlab
+
+### 1.5.1 让出22端口
+
+注意，由于gitlab的SSH默认使用的是22端口，因此主机的sshd建议修改为其他端口。编辑`/etc/ssh/sshd_config`增加2222端口：
+
+```
+#Port 22
+Port 2222
+```
+
+然后执行如下命令为SELinux开启2222端口：
+
+```
+semanage port -a -t ssh_port_t -p tcp 2222
+```
+
+然后执行如下命令让防火墙通过2222端口：
+
+```
+firewall-cmd --permanent --add-port=2222/tcp
+systemctl restart firewalld.service
+```
+
+### 1.5.2 启动gitlab
+
+使用gitlab官方docker镜像，docker-compose.yml文件如下：
+
+```
+version: '3'
+
+services:
+  mysql:
+    image: gitlab/gitlab-ce
+    container_name: gitlab
+    hostname: gitlab
+    privileged: true
+    ports:
+      - "22:22"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /srv/gitlab/config:/etc/gitlab      # 1
+      - /srv/gitlab/logs:/var/log/gitlab    # 1
+      - /srv/gitlab/data:/var/opt/gitlab    # 1
+```
+
+1. 挂载目录如下：
+
+| 主机目录 | 容器目录 | 内容 |
+| --- | --- | --- | --- |
+| /srv/gitlab/data | /var/opt/gitlab | 应用数据 |
+| /srv/gitlab/logs | /var/log/gitlab | 日志 |
+| /srv/gitlab/config | /etc/gitlab | GitLab配置文件 | 
+
+### 1.5.3 配置gitlab
+
+由于配置文件已经共享到宿主机，因此可以通过编辑`/srv/gitlab/config/gitlab.rb`配置gitlab：
+
+```
+# 配置external_url，外部访问地址，比如每个git库的clone地址就是基于它拼出来的
+external_url 'http://gitlab.trustchain.com'
+# 配置LDAP
+gitlab_rails['ldap_enabled'] = true
+
+###! **remember to close this block with 'EOS' below**
+gitlab_rails['ldap_servers'] = YAML.load <<-'EOS'
+  main: # 'main' is the GitLab 'provider ID' of this LDAP server
+    label: 'LDAP'
+    host: 'ldap.trustchain.com'
+    port: 389
+    uid: 'cn'
+    bind_dn: 'cn=admin,dc=trustchain,dc=com'
+    password: 'Tcartn0ctram$'
+    encryption: 'plain' # "start_tls" or "simple_tls" or "plain"
+    verify_certificates: true
+    active_directory: false
+    allow_username_or_email_login: true
+    lowercase_usernames: true
+    block_auto_created_users: false
+    base: 'dc=trustchain,dc=com'
+    user_filter: ''
+    ## EE only
+    group_base: ''
+    admin_group: ''
+    sync_ssh_keys: false
+EOS
+```
+
+然后执行如下命令使gitlab配置生效：
+
+```
+docker exec -it gitlab gitlab-ctl reconfigure
+```
