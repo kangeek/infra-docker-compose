@@ -1,0 +1,33 @@
+! Put user rules line by line in this file.
+! See https://adblockplus.org/en/filter-cheatsheet
+
+.github.com
+.travis-ci.org
+.maven.apache.org
+.plugins.jetbrains.com
+.amazonaws.com
+.docker.com
+.stackoverflow.com
+.spring.io
+.vagrantup.io
+.hashicorp.com
+.vagrantup.com
+||vagrantcloud.com
+.gcr.io
+.quay.io
+.get.k8s.io
+.codedellemc.com
+.googleapis.com
+.gradle.org
+.golanger.com
+.udemy.com
+.cloudfoundry.com
+.jetbrains.com
+.commonaccord.org
+.citrix.com
+.gnome-look.org
+.kubernetes.io
+.atlassian.com
+.openshift.org
+.openshift.com
+.readthedocs.io

@@ -14,3 +14,23 @@ services:
       - './etc_dnsmasq.conf:/etc/dnsmasq.conf:rw'
       - './etc_resolv.dnsmasq:/etc/resolv.dnsmasq:rw'
       - './etc_dnsmasq.hosts:/etc/dnsmasq.hosts:rw'
+  proxy:
+    image: sgrio/alpine-sslocalproxy
+    container_name: proxy
+    privileged: true
+    ports:
+      - "1080:1080"
+      - "8118:8118"
+    volumes:
+      - './ss-client.json:/etc/shadowsocks-libev/config.json:rw'
+  httpd:
+    image: httpd:2.4
+    container_name: httpd
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "80:80"
+    volumes:
+      - './index.html:/usr/local/apache2/htdocs/index.html:rw'
+
