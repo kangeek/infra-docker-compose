@@ -1,0 +1,48 @@
+version: "3"
+
+services:
+  gerrit:
+    image: openfrontier/gerrit
+    container_name: gerrit
+    hostname: gerrit.trustchain.com
+    privileged: true
+    dns:
+      - 172.31.0.254
+    ports:
+      - "29418:29418"
+      - "80:8080"
+#    user: 0:0
+    depends_on:
+      - mysql
+    environment:
+      - WEBURL=http://gerrit.trustchain.com
+      - DATABASE_TYPE=mysql
+      - DATABASE_HOSTNAME=mysql
+      - DATABASE_DATABASE=reviewdb
+      - DATABASE_USERNAME=gerrit
+      - DATABASE_PASSWORD=gerrit
+      - AUTH_TYPE=LDAP
+      - LDAP_SERVER=ldap://ldap.trustchain.com
+      - LDAP_ACCOUNTBASE=dc=trustchain,dc=com
+      - LDAP_USERNAME=cn=admin,dc=trustchain,dc=com
+      - LDAP_PASSWORD=Tcartn0ctram$$
+      - LDAP_ACCOUNTPATTERN=(&(objectClass=inetorgperson)(cn=$${username}))
+      - LDAP_ACCOUNTFULLNAME=displayName
+      - LDAP_ACCOUNTEMAILADDRESS=mail
+      - LDAP_ACCOUNTSSHUSERNAME=cn
+      - GERRIT_INIT_ARGS=--install-plugin=download-commands
+    volumes:
+     - /srv/gerrit:/var/gerrit/review_site
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=reviewdb
+      - MYSQL_USER=gerrit
+      - MYSQL_PASSWORD=gerrit
+    volumes:
+      - /srv/mysql:/var/lib/mysql
+#    command: ["--character-set-server=utf8", "--collation-server=utf8_bin", "--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
+    command: ["--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
