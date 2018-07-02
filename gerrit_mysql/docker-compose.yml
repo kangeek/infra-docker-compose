@@ -30,7 +30,7 @@ services:
       - LDAP_ACCOUNTFULLNAME=displayName
       - LDAP_ACCOUNTEMAILADDRESS=mail
       - LDAP_ACCOUNTSSHUSERNAME=cn
-      - GERRIT_INIT_ARGS=--install-plugin=download-commands
+      - GERRIT_INIT_ARGS=--install-plugin=download-commands,Events-log
     volumes:
      - /srv/gerrit:/var/gerrit/review_site
 
