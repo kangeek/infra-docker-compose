@@ -1,4 +1,4 @@
-
+tlab](http://gitlab.trustchain.com/infra/infra-docker-compose)。
 
 # 0 准备
 
@@ -277,11 +277,12 @@ services:
 ## 1.4 Gerrit
 
 
-### 1.4.1 docker-compose.yml及相关配置文件
+### 1.4.1 使用Gerrit官方镜像
 
+
+#### 1.4.1.1 docker-compose.yml及相关配置文件
 
 gerrit使用官方Docker镜像，使用postgres作为数据库。docker-compose.yml如下：
-
 
 ```
 version: '3'
@@ -381,7 +382,7 @@ Gerrit要连接OpenLDAP，因此需要在启动前将配置文件提供出来。
         password = admin
 ```
 
-### 1.4.2 启动过程
+#### 1.4.1.2 启动过程
 
 
 1. Gerrit容器使用ID为1000的`gerrit`用户，因此首先确保主机存在该用户（主要用于volume权限）。
@@ -391,9 +392,75 @@ Gerrit要连接OpenLDAP，因此需要在启动前将配置文件提供出来。
 5. 初始化完成后，再把docker-compose.yml中初始化的那行注释掉，然后用后台方式启动gerrit即可：`docker-compose up -d gerrit`。
 
 
-不过以上过程都做成了脚本，直接执行源码中的`newly-install.sh`脚本即可（注意：该脚本会清除数据，主要用于第一次部署）。
+不过以上过程都做成了脚本，直接执行源码中的`newly-install.sh`脚本即可。
+
+#### 1.4.2 使用`openfrontier/gerrit`
 
 
+更加推荐使用这个镜像，因为部署起来更加简洁。
+
+
+这个例子使用MySQL，相对来说也更加熟悉。直接看docker-compose.yml文件吧：
+
+
+```
+version: "3"
+
+services:
+  gerrit:
+    image: openfrontier/gerrit
+    container_name: gerrit
+    hostname: gerrit.trustchain.com
+    privileged: true
+    dns:
+      - 172.31.0.254
+    ports:
+      - "29418:29418"
+      - "80:8080"
+#    user: 0:0
+    depends_on:
+      - mysql
+    environment:
+      - WEBURL=http://gerrit.trustchain.com
+      - DATABASE_TYPE=mysql                         # 1
+      - DATABASE_HOSTNAME=mysql
+      - DATABASE_DATABASE=reviewdb
+      - DATABASE_USERNAME=gerrit
+      - DATABASE_PASSWORD=gerrit
+      - AUTH_TYPE=LDAP                               # 2
+      - LDAP_SERVER=ldap://ldap.trustchain.com
+      - LDAP_ACCOUNTBASE=dc=trustchain,dc=com
+      - LDAP_USERNAME=cn=admin,dc=trustchain,dc=com
+      - LDAP_PASSWORD=<password of admin>
+      - LDAP_ACCOUNTPATTERN=(&(objectClass=inetorgperson)(cn=$${username}))        # 3
+      - LDAP_ACCOUNTFULLNAME=displayName
+      - LDAP_ACCOUNTEMAILADDRESS=mail
+    volumes:
+     - /srv/gerrit:/var/gerrit/review_site
+
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=reviewdb
+      - MYSQL_USER=gerrit
+      - MYSQL_PASSWORD=gerrit
+    volumes:
+      - /srv/mysql:/var/lib/mysql
+#    command: ["--character-set-server=utf8", "--collation-server=utf8_bin", "--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
+    command: ["--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]         # 4
+```
+
+
+1. 环境变量支持全部的DATABASE配置参数；
+2. 配置为LDAP方式，支持全部的LDAP配置参数；
+3. 注意`$`要用`$$`转义；
+4. 配置`sql-mode`，否则会报错。使用5.6版本的mysql也可以解决该问题。
+
+
+> 注意：即使使用了LDAP，第一次登录的LDAP账号也会称为管理员。
 
 ## 1.5 Gitlab
 
@@ -444,6 +511,7 @@ services:
 
 1. 挂载目录如下：
 
+
 | 主机目录 | 容器目录 | 内容 |
 | --- | --- | --- | --- |
 | /srv/gitlab/data | /var/opt/gitlab | 应用数据 |
@@ -452,7 +520,9 @@ services:
 
 ### 1.5.3 配置gitlab
 
+
 由于配置文件已经共享到宿主机，因此可以通过编辑`/srv/gitlab/config/gitlab.rb`配置gitlab：
+
 
 ```
 # 配置external_url，外部访问地址，比如每个git库的clone地址就是基于它拼出来的
@@ -468,7 +538,7 @@ gitlab_rails['ldap_servers'] = YAML.load <<-'EOS'
     port: 389
     uid: 'cn'
     bind_dn: 'cn=admin,dc=trustchain,dc=com'
-    password: 'Tcartn0ctram$'
+    password: '<passwd of admin>'
     encryption: 'plain' # "start_tls" or "simple_tls" or "plain"
     verify_certificates: true
     active_directory: false
@@ -486,6 +556,84 @@ EOS
 
 然后执行如下命令使gitlab配置生效：
 
+
 ```
 docker exec -it gitlab gitlab-ctl reconfigure
 ```
+
+# 1.6 上网代理
+
+
+这里使用SOCKS-5来做外网的代理，支持PAC模式和全局代理模式。
+
+
+1. 代理使用sslocal，代理服务器的配置通过json文件传给该命令，端口为1080；
+2. sslocal的代理为socks协议，因此使用privoxy转为http协议，端口为8118，该代理地址可用于全局代理模式的配置；
+3. PAC代理模式维护一个list，只有list中的网址是走代理的，通过一个pac文件来维护，同时指定了SOCKS代理的地址，将该pac文件用http服务提供出来，使用者直接配置该pac文件的http地址即可使用PAC方式上网。
+
+
+以上，第1,2由`sgrio/alpine-sslocalproxy`容器提供；第3条就起一个`httpd`容器，将pac文件用http访问即可。docker-compose.yml如下：
+
+
+```
+version: '3'
+
+services:
+  proxy:
+    image: sgrio/alpine-sslocalproxy
+    container_name: proxy
+    privileged: true
+    ports:
+      - "1080:1080"
+      - "8118:8118"
+    volumes:
+      - './ss-client.json:/etc/shadowsocks-libev/config.json:rw'    # 1
+  httpd:
+    image: httpd:2.4
+    container_name: httpd
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "80:80"
+    volumes:
+      - './index.html:/usr/local/apache2/htdocs/index.html:rw'       # 2
+```
+
+1. 代理服务器的配置通过volume挂载[`ss-client.json`]()文件实现；
+2. pac的内容放在[`index.html`](http://gitlab.trustchain.com/infra/infra-docker-compose/blob/master/infra/index.html)中通过volume挂载文件放到httpd的web目录下，从而可以直接通过地址访问。
+
+
+pac的生成通过[`gen-pac.sh`](http://gitlab.trustchain.com/infra/infra-docker-compose/blob/master/infra/gen-pac.sh)命令生成，该命令会从`gfwlist`拉取一份常用的代理网站地址list，另外还会加上[`user-rules.txt`](http://gitlab.trustchain.com/infra/infra-docker-compose/blob/master/infra/user-rules.txt)中自定义的list，生成pac文件`index.html`。
+
+
+# 1.7 Jenkins
+
+
+Jenkins基于官方提供的容器进行部署，参考文档：https://jenkins.io/doc/book/installing/#downloading-and-running-jenkins-in-docker。
+
+
+直接上`docker-compose.yml`：
+
+
+```
+version: "3"
+
+services:
+  jenkins:
+    image: jenkinsci/blueocean
+    container_name: jenkins
+    hostname: jenkins.trustchain.com
+    privileged: true
+    user: 0:0
+    dns:
+      - 172.31.0.254
+    ports:
+      - "80:8080"
+      - "50000:50000"
+    volumes:
+     - /var/run/docker.sock:/var/run/docker.sock            # 1
+     - /srv/jenkins:/var/jenkins_home
+```
+
+1. 由于Jenkins运行在容器内，同时Jenkins任务有会以容器作为slave，因此需要映射宿主机的`docker.sock`，从而在起容器的时候仍然是在宿主机上起容器来跑CI。
