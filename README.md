@@ -1,4 +1,3 @@
-tlab](http://gitlab.trustchain.com/infra/infra-docker-compose)。
 
 # 0 准备
 
@@ -461,6 +460,159 @@ services:
 
 
 > 注意：即使使用了LDAP，第一次登录的LDAP账号也会称为管理员。
+
+### 1.4.3 配置为HTTP的登录认证方式
+
+
+Gerrit支持多种登录认证方式，默认的方式是`OpenID`，上一小节介绍的是`LDAP`的方式，此外还有`HTTP`和`DEVELOPMENT_BECOME_ANY_ACCOUNT`方式，后者通常用于测试，生产环境不能使用，这一节介绍一下`HTTP`的认证方式。
+
+
+`HTTP`的认证是通过HTTP反向代理来实现的，通常使用`apache2`或`nginx`来进行代理，认证则基于`htpasswd`来做。这里我们使用`nginx`进行代理，`docker-compose.yml`文件如下：
+
+
+```
+version: "3"
+
+services:
+  gerrit:
+    image: openfrontier/gerrit
+    container_name: gerrit
+    hostname: review.trustchain.com
+    privileged: true
+    dns:
+      - 172.31.0.254
+    ports:
+      - "29418:29418"
+      - "8080:8080"                                  # 1
+#    user: 0:0
+    depends_on:
+      - mysql
+    environment:
+      - WEBURL=http://review.trustchain.com
+      - DATABASE_TYPE=mysql
+      - DATABASE_HOSTNAME=mysql
+      - DATABASE_DATABASE=reviewdb
+      - DATABASE_USERNAME=gerrit
+      - DATABASE_PASSWORD=gerrit
+      - AUTH_TYPE=HTTP                                 # 2
+      - HTTPD_LISTENURL=proxy-http://*:8080/           # 3
+#      - GERRIT_INIT_ARGS=--install-plugin=download-commands,Events-log,its-jira
+    volumes:
+      - /srv/gerrit:/var/gerrit/review_site
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=reviewdb
+      - MYSQL_USER=gerrit
+      - MYSQL_PASSWORD=gerrit
+    volumes:
+      - /srv/mysql:/var/lib/mysql
+    command: ["--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
+
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    hostname: review.trustchain.com
+    dns:
+      - 172.31.0.254
+    privileged: true
+    ports:
+      - "80:80"                                         # 1
+    volumes:
+      - ./nginx-gerrit.conf:/etc/nginx/conf.d/default.conf     # 4
+      - ./gerrit-users:/etc/nginx/conf.d/gerrit-users          # 5
+```
+
+
+1. Gerrit使用8080端口，而下方nginx使用80端口，nginx将80请求映射到gerrit的8080端口；
+2. 认证方式使用`HTTP`；
+3. 告知gerrit代理监听URL；
+4. `nginx-gerrit.conf`中定义了如何进行代理；
+5. `gerrit-users`为用户名和加密密码信息。
+
+
+`nginx-gerrit.conf`内容如下：
+
+
+```
+server {
+    listen       80;
+    server_name  review.trustchain.com;
+
+    location /login/ {                                   # 1
+        auth_basic "Gerrit Code Review";
+        auth_basic_user_file /etc/nginx/conf.d/gerrit-users;              # 2
+        proxy_pass http://gerrit:8080;                   # 3
+    }
+
+    location / {                                         # 4
+        proxy_pass        http://gerrit:8080;            # 3
+        proxy_set_header  X-Forwarded-For $remote_addr;
+        proxy_set_header  Host $host;
+    }
+}
+```
+
+
+1. 对于`/login/`配置为基于htpasswd文件的认证方式；
+2. 基于htpasswd命令生成的用户信息文件来认证；
+3. 认证通过后代理到gerrit的8080；
+4. 对于`/`路径下的请求直接进行转发。
+
+
+**部署步骤：**
+
+
+1. 首先使用`docker-compose up -d mysql`启动mysql；
+2. 待mysql启动完毕（可以通过logs命令查看），然后执行`docker-compose up -d`启动剩下的gerrit和nginx。
+
+
+> centos使用如下命令安装htpasswd：
+> `yum install -y httpd-tools
+> ubuntu使用如下命令安装htpasswd：
+> `apt install -y apache2-utils
+> 然后使用如下命令配置用户名和密码
+> `htpasswd -m gerrit_users <user>`
+> 然后输入两次密码
+
+
+**部署之后：**
+
+
+* 使用admin登录，则其成为管理员用户，配置SSH公钥，用于后续配置：
+
+
+```
+# 判断SSH公钥是否配置OK
+ssh -p 29418 admin@review.trustchain.com
+```
+
+
+* 安装插件
+
+
+```
+cd /srv/gerrit/plugins
+wget https://gerrit-ci.gerritforge.com/job/plugin-its-jira-bazel-stable-2.15/lastSuccessfulBuild/artifact/bazel-genfiles/plugins/its-jira/its-jira.jar
+wget https://gerrit-ci.gerritforge.com/job/plugin-its-base-bazel-stable-2.15/lastSuccessfulBuild/artifact/bazel-genfiles/plugins/its-base/its-base.jar
+wget https://gerrit-ci.gerritforge.com/job/plugin-importer-bazel-stable-2.15/lastSuccessfulBuild/artifact/bazel-genfiles/plugins/importer/importer.jar
+```
+
+
+* 用户配置邮件：新创建的用户登录后无法更新邮箱，需要管理员通过如下方式更新邮箱
+
+
+```
+ssh -p 29418 admin@review.trustchain.com gerrit set-account --add-email liukang@sjclian.com liukang
+```
+
+
+
+
 
 ## 1.5 Gitlab
 

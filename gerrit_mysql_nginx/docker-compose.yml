@@ -1,0 +1,56 @@
+version: "3"
+
+services:
+  gerrit:
+    image: openfrontier/gerrit
+    container_name: gerrit
+    hostname: review.trustchain.com
+    privileged: true
+    dns:
+      - 172.31.0.254
+    ports:
+      - "29418:29418"
+      - "8080:8080"
+#    user: 0:0
+    depends_on:
+      - mysql
+    environment:
+      - WEBURL=http://review.trustchain.com
+      - DATABASE_TYPE=mysql
+      - DATABASE_HOSTNAME=mysql
+      - DATABASE_DATABASE=reviewdb
+      - DATABASE_USERNAME=gerrit
+      - DATABASE_PASSWORD=gerrit
+      - AUTH_TYPE=HTTP
+      - AUTH_LOGOUTURL=http://aa:bb@review.trustchain.com
+      - HTTPD_LISTENURL=proxy-http://*:8080/
+      - GERRIT_INIT_ARGS=--install-plugin=download-commands,Events-log,its-jira
+    volumes:
+      - /srv/gerrit:/var/gerrit/review_site
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=reviewdb
+      - MYSQL_USER=gerrit
+      - MYSQL_PASSWORD=gerrit
+    volumes:
+      - /srv/mysql:/var/lib/mysql
+    command: ["--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
+
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    hostname: review.trustchain.com
+    dns:
+      - 172.31.0.254
+    privileged: true
+    ports:
+      - "80:80"
+    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-gerrit.conf:/etc/nginx/conf.d/default.conf
+      - ./gerrit-users:/etc/nginx/conf.d/gerrit-users
