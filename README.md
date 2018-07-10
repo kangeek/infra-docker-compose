@@ -789,3 +789,103 @@ services:
 ```
 
 1. 由于Jenkins运行在容器内，同时Jenkins任务有会以容器作为slave，因此需要映射宿主机的`docker.sock`，从而在起容器的时候仍然是在宿主机上起容器来跑CI。
+
+# 1.8 Nexus
+
+仍然采用容器的部署方式，采用官方镜像`sonatype/nexus3`。
+
+
+使用`nginx`进行反向代理，将不同的域名映射到不同的nexus端口或路径。
+
+
+因此`docker-compose.yml`文件内容如下：
+
+
+```
+version: "3"
+
+services:
+  nexus:
+    image: sonatype/nexus3
+    container_name: nexus
+    hostname: nexus.trustchain.com
+    privileged: true
+    dns:
+      - 172.31.0.254
+    volumes:
+     - /srv/nexus-data:/nexus-data
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    dns:
+      - 172.31.0.254
+    privileged: true
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx_conf.d:/etc/nginx/conf.d        # 1
+```
+
+
+1. nexus无需将端口映射出来，nginx通过一些配置文件定义如何进行代理。文件内容举例如下：
+
+
+* nexus本身的代理，将端口8081映射到80：
+
+
+```
+server {
+    listen       80;
+    server_name  nexus.trustchain.com;
+
+    location / {
+        proxy_pass        http://nexus:8081;
+        proxy_set_header  X-Forwarded-For $remote_addr;
+        proxy_set_header  Host $host;
+    }
+}
+```
+
+
+* maven的代理：
+
+
+```
+server {
+    listen       80;
+    server_name  maven.trustchain.com;
+
+    location / {
+        proxy_pass        http://nexus:8081/repository/maven-public/;
+        proxy_set_header  X-Forwarded-For $remote_addr;
+        proxy_set_header  Host $host;
+    }
+}
+```
+
+
+> 因此在nexus中配置的maven库（或group）的URL应为：`http://nexus:8081/repository/maven-public/`。
+
+
+* docker registry的代理：
+
+
+```
+server {
+    listen       80;
+    server_name  registry.trustchain.com;
+
+    location / {
+        proxy_pass        http://nexus:8081/repository/docker-group/;
+        proxy_set_header  X-Forwarded-For $remote_addr;
+        proxy_set_header  Host $host;
+    }
+}
+```
+
+
+> 在nexus中，docker的host/proxy也可以配置为指定的端口，这时候相应调整一下`proxy_pass`的配置即可。
+
+
+其他不再一一列举。

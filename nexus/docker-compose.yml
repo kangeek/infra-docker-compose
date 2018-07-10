@@ -1,0 +1,23 @@
+version: "3"
+
+services:
+  nexus:
+    image: sonatype/nexus3
+    container_name: nexus
+    hostname: nexus.trustchain.com
+    privileged: true
+    dns:
+      - 172.31.0.254
+    volumes:
+     - /srv/nexus-data:/nexus-data
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    dns:
+      - 172.31.0.254
+    privileged: true
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx_conf.d:/etc/nginx/conf.d
