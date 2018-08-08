@@ -21,3 +21,13 @@ services:
       - "80:80"
     volumes:
       - ./nginx_conf.d:/etc/nginx/conf.d
+
+  registry:
+    image: registry:2
+    container_name: registry
+    ports:
+      - 5000:5000
+    environment:
+      - REGISTRY_PROXY_REMOTEURL="https://docker.mirrors.ustc.edu.cn"
+    volumes:
+      - /srv/registry:/var/lib/registry
