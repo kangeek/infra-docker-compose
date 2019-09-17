@@ -4,7 +4,7 @@ services:
   gerrit:
     image: gerritcodereview/gerrit:2.14.8
     container_name: gerrit
-    hostname: gerrit.trustchain.com
+    hostname: gerrit.example.com
     privileged: true
     dns:
       - 172.31.0.254

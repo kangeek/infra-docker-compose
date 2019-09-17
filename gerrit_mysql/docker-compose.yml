@@ -4,7 +4,7 @@ services:
   gerrit:
     image: openfrontier/gerrit
     container_name: gerrit
-    hostname: gerrit.trustchain.com
+    hostname: gerrit.example.com
     privileged: true
     dns:
       - 172.31.0.254
@@ -15,16 +15,16 @@ services:
     depends_on:
       - mysql
     environment:
-      - WEBURL=http://gerrit.trustchain.com
+      - WEBURL=http://gerrit.example.com
       - DATABASE_TYPE=mysql
       - DATABASE_HOSTNAME=mysql
       - DATABASE_DATABASE=reviewdb
       - DATABASE_USERNAME=gerrit
       - DATABASE_PASSWORD=gerrit
       - AUTH_TYPE=LDAP
-      - LDAP_SERVER=ldap://ldap.trustchain.com
-      - LDAP_ACCOUNTBASE=dc=trustchain,dc=com
-      - LDAP_USERNAME=cn=admin,dc=trustchain,dc=com
+      - LDAP_SERVER=ldap://ldap.example.com
+      - LDAP_ACCOUNTBASE=dc=example,dc=com
+      - LDAP_USERNAME=cn=admin,dc=example,dc=com
       - LDAP_PASSWORD=Tcartn0ctram$$
       - LDAP_ACCOUNTPATTERN=(&(objectClass=inetorgperson)(cn=$${username}))
       - LDAP_ACCOUNTFULLNAME=displayName

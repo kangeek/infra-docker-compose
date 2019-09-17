@@ -27,6 +27,5 @@ sed -i "s/entrypoint/#entrypoint/g" docker-compose.yml
 docker-compose up -d gerrit
 
 
-#sed -i "s/gerrit.trustchain.com:8080/gerrit.trustchain.com/g" /srv/gerrit/etc/gerrit.config
 #chown gerrit:gerrit -R /srv/gerrit
 #docker exec -ti gerrit /var/gerrit/bin/gerrit.sh restart

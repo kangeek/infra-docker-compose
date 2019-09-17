@@ -4,7 +4,7 @@ services:
   gerrit:
     image: openfrontier/gerrit
     container_name: gerrit
-    hostname: review.trustchain.com
+    hostname: review.example.com
     privileged: true
     dns:
       - 172.31.0.254
@@ -15,14 +15,14 @@ services:
     depends_on:
       - mysql
     environment:
-      - WEBURL=http://review.trustchain.com
+      - WEBURL=http://review.example.com
       - DATABASE_TYPE=mysql
       - DATABASE_HOSTNAME=mysql
       - DATABASE_DATABASE=reviewdb
       - DATABASE_USERNAME=gerrit
       - DATABASE_PASSWORD=gerrit
       - AUTH_TYPE=HTTP
-      - AUTH_LOGOUTURL=http://aa:bb@review.trustchain.com
+      - AUTH_LOGOUTURL=http://aa:bb@review.example.com
       - HTTPD_LISTENURL=proxy-http://*:8080/
       - GERRIT_INIT_ARGS=--install-plugin=download-commands,Events-log,its-jira
     volumes:
@@ -44,7 +44,7 @@ services:
   nginx:
     image: nginx
     container_name: nginx
-    hostname: review.trustchain.com
+    hostname: review.example.com
     dns:
       - 172.31.0.254
     privileged: true

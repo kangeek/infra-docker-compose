@@ -4,7 +4,7 @@ services:
   jenkins:
     image: jenkinsci/blueocean
     container_name: jenkins
-    hostname: jenkins.trustchain.com
+    hostname: jenkins.example.com
     privileged: true
     user: 0:0
     dns:

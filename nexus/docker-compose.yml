@@ -4,10 +4,12 @@ services:
   nexus:
     image: sonatype/nexus3
     container_name: nexus
-    hostname: nexus.trustchain.com
+    hostname: nexus.example.com
     privileged: true
     dns:
       - 172.31.0.254
+    ports:
+      - "8081:8081"
     volumes:
      - /srv/nexus-data:/nexus-data
 

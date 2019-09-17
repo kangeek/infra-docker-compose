@@ -8,8 +8,8 @@ services:
       - "389:389"
       - "636:636"
     environment:
-      - LDAP_ORGANISATION=TrustChainTech
-      - LDAP_DOMAIN=trustchain.com
+      - LDAP_ORGANISATION=ExampleCom
+      - LDAP_DOMAIN=example.com
       - LDAP_ADMIN_PASSWORD=admin
     volumes:
       - /srv/ldap/var:/var/lib/ldap
