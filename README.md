@@ -201,6 +201,8 @@ services:
 > 一个docker-compose配置文件中的多个Service是共享网络的，可以通过`network`指定，否则会默认创建一个`<文件夹名>_default`的bridge网络。
 服务间可以通过服务名进行通讯，如JIRA容器中ping mysql是OK的。
 
+> 关于Jira的破解可参考：https://blog.csdn.net/get_set/article/details/80856922
+
 ## 1.3 Confluence
 
 docker-compose.yml如下：
@@ -244,6 +246,8 @@ services:
 
 1. Confluence对数据库的要求，通过MySQL提供的参数可以指定；
 2. 配置为JVM分配的内存。
+
+> 关于Confluence的破解可参考：https://blog.csdn.net/get_set/article/details/80856922
 
 ## 1.4 Gerrit
 
@@ -682,6 +686,8 @@ services:
 2. pac的内容放在[`index.html`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/index.html)中通过volume挂载文件放到httpd的web目录下，从而可以直接通过地址访问。
 
 pac的生成通过[`gen-pac.sh`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/gen-pac.sh)命令生成，该命令会从`gfwlist`拉取一份常用的代理网站地址list，另外还会加上[`user-rules.txt`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/user-rules.txt)中自定义的list，生成pac文件`index.html`。
+
+> 代码中的代理配置信息（`infra/ss-client.json`）已经过期。
 
 # 1.7 Jenkins
 
