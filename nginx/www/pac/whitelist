@@ -1,0 +1,51 @@
+! Put user rules line by line in this file.
+! See https://adblockplus.org/en/filter-cheatsheet
+
+! 强制走代理示例：
+||google.com
+||*.google.com
+
+! 强制不走代理示例：
+@@baidu.com
+@@*.baidu.com
+
+! 修改完成后请关闭、开启VPN一次方可生效。
+google-analytics.com
+.atlassian.com
+.citrix.com
+.cloudfoundry.com
+.cloudfront.net
+.codedellemc.com
+.commonaccord.org
+.coursera.org
+.docker.com
+hub.docker.com
+.docs.live.net
+.get.k8s.io
+.gnome-look.org
+.golanger.com
+.gradle.org
+.hashicorp.com
+.jetbrains.com
+.kubernetes.io
+.maven.apache.org
+.officeapps.live.com
+.openshift.com
+.openshift.org
+.plugins.jetbrains.com
+.quay.io
+.spring.io
+.travis-ci.org
+.udemy.com
+.vagrantup.com
+.vagrantup.io
+vagrantcloud.com
+.shadowsocks.com
+textnow.com
+.github.com
+.githubapp.com
+.githubusercontent.com
+.avatars0.githubusercontent.com
+.avatars1.githubusercontent.com
+.avatars2.githubusercontent.com
+.avatars3.githubusercontent.com
