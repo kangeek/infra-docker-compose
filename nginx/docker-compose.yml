@@ -12,11 +12,11 @@ services:
     privileged: true
     ports:
       - "80:80"
-#     - "443:443"
+      - "443:443"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/www:/var/www
-#     - ./nginx/ssl:/etc/nginx/ssl
+      - ./conf.d:/etc/nginx/conf.d
+      - ./www:/var/www
+      - ./ssl:/etc/nginx/ssl
 
 networks:
   devops:

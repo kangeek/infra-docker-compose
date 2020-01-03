@@ -1,0 +1,9 @@
+{
+  "server":"xxx.xxx.xxx.xxx",
+  "server_port":xxxxx,
+  "local_port":1080,
+  "password":"xxxxxx",
+  "method":"rc4-md5",
+  "fast_open":false,
+  "timeout":180
+}

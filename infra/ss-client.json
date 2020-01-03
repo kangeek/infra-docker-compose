@@ -1,8 +1,0 @@
-{
-  "server":"hk03.ipip.pm",
-  "server_port":42701,
-  "local_port":1080,
-  "password":"261892",
-  "method":"rc4-md5",
-  "timeout":180
-}

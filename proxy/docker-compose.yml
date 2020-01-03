@@ -1,0 +1,19 @@
+version: '3.7'
+
+services:
+  proxy:
+    image: sgrio/alpine-sslocalproxy
+    container_name: proxy
+    hostname: proxy
+    networks:
+      - devops
+    privileged: true
+    ports:
+      - "1080:1080"
+      - "8118:8118"
+    volumes:
+      - ./ss-client.json:/etc/shadowsocks-libev/config.json
+
+networks:
+  devops:
+    name: devops

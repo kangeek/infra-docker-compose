@@ -1,0 +1,23 @@
+server {
+    listen 443 ssl;
+
+    server_name	abc.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/abc.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/abc.example.com.key;
+
+    ssl_session_timeout 5m;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; 
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5:!RC4:!DHE; 
+    ssl_prefer_server_ciphers on;
+
+    location / {
+        root  /var/www/abc.exampel.com;
+        index index.html;
+    }
+}
+server {
+    listen 80;
+    server_name abc.example.com;
+    rewrite ^(.*)$ https://$host$1 permanent; 
+}
