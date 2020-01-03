@@ -1,32 +1,56 @@
-version: '3'
-
+version: '3.7'
 services:
-  mysql:
+  mysql-jira:
     image: mysql:5.7
-    container_name: mysql
+    container_name: mysql-jira
     environment:
-      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_ROOT_PASSWORD=devops
       - MYSQL_DATABASE=jiradb
       - MYSQL_USER=jira
-      - MYSQL_PASSWORD=jira
+      - MYSQL_PASSWORD=devops
+    networks:
+      - devops
     volumes:
-      - /srv/mysql:/var/lib/mysql
-    command: ["--character-set-server=utf8", "--collation-server=utf8_bin"]
+      - ./mysql/mysqld_jira.cnf:/etc/mysql/conf.d/mysqld_jira.cnf
+      - mysql-jira:/var/lib/mysql
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
   jira:
-    image: blacklabelops/jira:7.10.0
-    privileged: true
+    image: atlassian/jira-software
     container_name: jira
+    hostname: jira
+    dns: 192.168.6.114
     depends_on:
-      - mysql
+      - mysql-jira
     ports:
-      - "80:8080"
-    user: 0:0
+      - "8081:8080"
     environment:
-      - DOCKER_WAIT_HOST=mysql
-      - DOCKER_WAIT_PORT=3306
-      - JIRA_DATABASE_URL=mysql://jira@mysql/jiradb
-      - JIRA_DB_PASSWORD=jira
-      - "CATALINA_OPTS= -Xms2g -Xmx6g"
+#     - JVM_MINIMUM_MEMORY=512m
+#     - JVM_MAXIMUM_MEMORY=2048m
+      - ATL_PROXY_NAME=jira.example
+      - ATL_PROXY_PORT=443
+    networks:
+      - devops
     volumes:
-      - /srv/jira:/var/atlassian/jira
+      - ./mysql/mysql-connector-java-5.1.48.jar:/opt/atlassian/jira/lib/mysql-connector-java-5.1.48.jar
+      - jira:/var/atlassian/application-data/jira
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+networks:
+  devops:
+    name: devops
+    external: true
+
+volumes:
+  mysql-jira:
+    name: mysql-jira
+  jira:
+    name: jira
