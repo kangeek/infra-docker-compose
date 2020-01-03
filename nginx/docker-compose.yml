@@ -7,8 +7,6 @@ services:
     hostname: nginx
     networks:
       - devops
-#   dns:
-#     - 192.168.6.114
     privileged: true
     ports:
       - "80:80"
@@ -17,6 +15,11 @@ services:
       - ./conf.d:/etc/nginx/conf.d
       - ./www:/var/www
       - ./ssl:/etc/nginx/ssl
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
 networks:
   devops:

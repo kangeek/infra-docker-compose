@@ -1,4 +1,4 @@
 ss-client.json
-nginx/ssl/*.crt
-nginx/ssl/*.key
+nginx/ssl/
+ldap/ssl/
 nginx/conf.d/*.conf

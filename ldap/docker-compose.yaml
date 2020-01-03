@@ -1,24 +1,66 @@
-version: '3'
+version: '3.7'
 
 services:
   ldap:
     image: osixia/openldap
     container_name: ldap
+    hostname: ldap
+    networks:
+      - devops
     ports:
       - "389:389"
       - "636:636"
     environment:
-      - LDAP_ORGANISATION=ExampleCom
+      - LDAP_ORGANISATION=Kang
       - LDAP_DOMAIN=example.com
-      - LDAP_ADMIN_PASSWORD=admin
+      - LDAP_ADMIN_PASSWORD=passwd
+      - LDAP_READONLY_USER=true
+      - LDAP_READONLY_USER_USERNAME=readonly
+      - LDAP_READONLY_USER_PASSWORD=passwd
+      - LDAP_TLS_CRT_FILENAME=ldap.example.com.crt
+      - LDAP_TLS_KEY_FILENAME=ldap.example.com.key
+      - LDAP_TLS_CA_CRT_FILENAME=root.example.com.crt
     volumes:
-      - /srv/ldap/var:/var/lib/ldap
-      - /srv/ldap/etc:/etc/ldap/slapd.d
+      - ./ssl:/container/service/slapd/assets/certs
+      - ldap-var:/var/lib/ldap
+      - ldap-etc:/etc/ldap/slapd.d
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
   ldap-admin:
     image: osixia/phpldapadmin
     container_name: ldap-admin
-    ports:
-      - "443:443"
+    hostname: ldap-admin
+    depends_on:
+      - ldap
+    networks:
+      - devops
+#   If nginx not on the same "devops" network, uncomment the following two lines.
+#   ports:
+#     - "8701:80"
+#     - "8443:443"
     environment:
       - PHPLDAPADMIN_LDAP_HOSTS=ldap
+      - PHPLDAPADMIN_HTTPS_CRT_FILENAME=ldap.example.com.crt
+      - PHPLDAPADMIN_HTTPS_KEY_FILENAME=ldap.example.com.key
+      - PHPLDAPADMIN_HTTPS_CA_CRT_FILENAME=root.example.com.crt
+    volumes:
+      - ./ssl:/container/service/phpldapadmin/assets/apache2/certs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+volumes:
+  ldap-var:
+    name: ldap-var
+  ldap-etc:
+    name: ldap-etc
+
+networks:
+  devops:
+    name: devops
