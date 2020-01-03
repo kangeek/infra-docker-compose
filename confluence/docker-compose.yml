@@ -24,16 +24,19 @@ services:
     depends_on:
       - mysql-confluence
     ports:
-      - "8090:8090"
-      - "8091:8091"
+      - "8701:8090"
+      - "8702:8091"
     networks:
       - devops
     environment:
-#     - JVM_MINIMUM_MEMORY=512m                 # 384m
-#     - JVM_MAXIMUM_MEMORY=2048m                # 768m
+      - JVM_MINIMUM_MEMORY=512m                 # 384m
+      - JVM_MAXIMUM_MEMORY=2048m                # 768m
       - ATL_PROXY_NAME=docs.example.com
       - ATL_PROXY_PORT=443
+      - ATL_TOMCAT_SCHEME=https
+      - ATL_TOMCAT_SECURE=true
     volumes:
+      - ./mysql/mysql-connector-java-5.1.48.jar:/opt/atlassian/confluence/confluence/WEB-INF/lib/mysql-connector-java-5.1.48.jar
       - confluence:/var/atlassian/application-data/confluence
     logging:
       driver: "json-file"
@@ -44,12 +47,10 @@ services:
 networks:
   devops:
     name: devops
+    external: true
 
 volumes:
   mysql-confluence:
     name: mysql-confluence
   confluence:
     name: confluence
-    
-    
-    
