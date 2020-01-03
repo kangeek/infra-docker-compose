@@ -1,34 +1,55 @@
-version: '3'
+version: '3.7'
 
 services:
-  mysql:
+
+  mysql-confluence:
     image: mysql:5.7
-    container_name: mysql
+    container_name: mysql-confluence
     environment:
-      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_ROOT_PASSWORD=devops
       - MYSQL_DATABASE=confluencedb
       - MYSQL_USER=confluence
-      - MYSQL_PASSWORD=confluence
+      - MYSQL_PASSWORD=devops
+    networks:
+      - devops
     volumes:
-      - /srv/mysql:/var/lib/mysql
-    command: ["--character-set-server=utf8", "--collation-server=utf8_bin", "--default-storage-engine=INNODB", "--max_allowed_packet=256M", "--innodb_log_file_size=2GB", "--binlog_format=row", "--transaction-isolation=READ-COMMITTED"]
+      - ./mysql/mysqld_confluence.cnf:/etc/mysql/conf.d/mysqld_confluence.cnf
+      - mysql-confluence:/var/lib/mysql
+    command: ["--transaction-isolation=READ-COMMITTED"]
 
   confluence:
-    image: blacklabelops/confluence:6.8.2
-    privileged: true
+    image: atlassian/confluence-server
     container_name: confluence
+    hostname: confluence
     depends_on:
-      - mysql
+      - mysql-confluence
     ports:
-      - "80:8090"
+      - "8090:8090"
       - "8091:8091"
-    user: 0:0
+    networks:
+      - devops
     environment:
-      - DOCKER_WAIT_HOST=mysql
-      - DOCKER_WAIT_PORT=3306
-      - CATALINA_PARAMETER1=-Xms
-      - CATALINA_PARAMETER_VALUE1=2g
-      - CATALINA_PARAMETER1=-Xmx
-      - CATALINA_PARAMETER_VALUE1=4g
+#     - JVM_MINIMUM_MEMORY=512m                 # 384m
+#     - JVM_MAXIMUM_MEMORY=2048m                # 768m
+      - ATL_PROXY_NAME=docs.example.com
+      - ATL_PROXY_PORT=443
     volumes:
-      - /srv/confluence:/var/atlassian/confluence
+      - confluence:/var/atlassian/application-data/confluence
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+networks:
+  devops:
+    name: devops
+
+volumes:
+  mysql-confluence:
+    name: mysql-confluence
+  confluence:
+    name: confluence
+    
+    
+    
