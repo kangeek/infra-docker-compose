@@ -24,3 +24,4 @@ services:
 networks:
   devops:
     name: devops
+    external: true

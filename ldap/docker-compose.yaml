@@ -49,6 +49,7 @@ services:
       - PHPLDAPADMIN_HTTPS_CA_CRT_FILENAME=root.example.com.crt
     volumes:
       - ./ssl:/container/service/phpldapadmin/assets/apache2/certs
+      - ldap-admin:/var/www/phpldapadmin
     logging:
       driver: "json-file"
       options:
@@ -60,7 +61,10 @@ volumes:
     name: ldap-var
   ldap-etc:
     name: ldap-etc
+  ldap-admin:
+    name: ldap-admin
 
 networks:
   devops:
     name: devops
+    external: true
