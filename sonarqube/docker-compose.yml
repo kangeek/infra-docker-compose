@@ -1,0 +1,60 @@
+version: '3.7'
+
+services:
+
+  postgres-sonar:
+    image: postgres
+    container_name: postgres-sonar
+    networks:
+      - devops
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=devops
+    volumes:
+      - postgres-sonar:/var/lib/postgresql
+      # This needs explicit mapping due to https://github.com/docker-library/postgres/blob/4e48e3228a30763913ece952c611e5e9b95c8759/Dockerfile.template#L52
+      - postgres-sonar-data:/var/lib/postgresql/data
+
+  sonarqube:
+    image: sonarqube
+    container_name: sonarqube
+    hostname: sonarqube
+    depends_on:
+      - postgres-sonar
+    ports:
+      - "9000:9000"
+    environment:
+      - sonar.jdbc.url=jdbc:postgresql://postgres-sonar:5432/sonar
+      - sonar.jdbc.username=sonar
+      - sonar.jdbc.password=devops
+    networks:
+      - devops
+    volumes:
+      - sonar-conf:/opt/sonarqube/conf
+      - sonar-data:/opt/sonarqube/data
+      - sonar-logs:/opt/sonarqube/logs
+      - sonar-extensions:/opt/sonarqube/extensions
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+networks:
+  devops:
+    name: devops
+    external: true
+
+volumes:
+  sonar-conf:
+    name: sonar-conf
+  sonar-data:
+    name: sonar-data
+  sonar-logs:
+    name: sonar-logs
+  sonar-extensions:
+    name: sonar-extensions
+  postgres-sonar:
+    name: postgres-sonar
+  postgres-sonar-data:
+    name: postgress-sonar-data
