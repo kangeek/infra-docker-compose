@@ -1,16 +1,39 @@
-version: '3'
+version: '3.7'
 
 services:
-  mysql:
+  gitlab:
     image: gitlab/gitlab-ce
     container_name: gitlab
     hostname: gitlab
-    privileged: true
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://gitlab.example.com'
+        nginx['redirect_http_to_https'] = true
     ports:
-      - "22:22"
-      - "80:80"
-      - "443:443"
+      - "2222:22"
+      - "8080:80"
+      - "8443:443"
+    networks:
+      - devops
     volumes:
-      - /srv/gitlab/config:/etc/gitlab
-      - /srv/gitlab/logs:/var/log/gitlab
-      - /srv/gitlab/data:/var/opt/gitlab
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+networks:
+  devops:
+    name: devops
+    external: true
+
+volumes:
+  gitlab-config:
+    name: gitlab-config
+  gitlab-logs:
+    name: gitlab-logs
+  gitlab-data:
+    name: gitlab-data
