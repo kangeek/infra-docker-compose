@@ -1,10 +1,35 @@
+[TOC]
+
+目前的方案主要是围绕Gitlab及其自带的gitlab-runner在搭建，如图。
+
+![](https://tva1.sinaimg.cn/large/006tNbRwly1gaia7y8na7j31f60nijwo.jpg)
+
+如果要查看基于Gerrit和Jenkins的部署方式，请切换到v0.1分支（其中各组件版本可能有点旧了，请自行使用镜像最新版本的镜像）。
+
 以下工具基于 Docker & Docker Compose 来部署，其中的配置全部基于“example.com”，具体部署前可根据实际情况进行批量替换。
 
 # 0 准备
 
-## 0.1 开启IPv4 IP forward
+## 0.1 安装docker
 
-编辑/etc/sysctl.conf，添加或修改：
+```
+curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+```
+
+并根据需要配置国内源。
+
+## 0.2 下载docker-compose
+
+参考[文档](https://docs.docker.com/compose/install/).
+
+```
+sudo curl -L https://github.com/docker/compose/releases/download/1.21.2/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+## 0.2 开启IPv4 IP forward（不配置似乎也没事，待验证）
+
+容器要想访问外部网络，需要本地系统的转发支持。编辑`/etc/sysctl.conf`，添加或修改：
 
 ```
 net.ipv4.ip_forward=1
@@ -17,32 +42,17 @@ systemctl restart network
 systemctl restart docker
 ```
 
-## 0.2 挂载目录的SELinux权限
+## 0.4 挂载目录的SELinux权限
 
-如果有挂载目录，需要配置SELinux权限。如挂载主机目录为`/srv/mysql`，则：
+这一版，容器数据的持久化数据的挂载有限使用命名卷，而不是直接将主机目录挂载到容器里。以便避免权限等问题导致的坑。
+
+如果开启SELinux，并且采用目录挂载挂载的方式，需要配置SELinux权限。如挂载主机目录为`/srv/mysql`，则执行：
 
 ```
 chcon -Rt svirt_sandbox_file_t /srv/mysql
 ```
 
-## 0.3 下载docker-compose
-
-参考[文档](https://docs.docker.com/compose/install/).
-
-```
-sudo curl -L https://github.com/docker/compose/releases/download/1.21.2/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-```
-
-## 0.4 加独立虚拟磁盘
-
-虚拟机模板的根目录并不大，因此通常需要将容器的数据部分通过volume的方式共享到主机新增的独立磁盘上。
-
-```
-mkfs.xfs /dev/sdb; echo -e "/dev/sdb\t/srv\txfs\tdefaults\t0 0" >> /etc/fstab; mount -a
-```
-
-## 0.5 防火墙方面
+## 0.4 防火墙方面
 
 **iptables增加端口**
 
@@ -62,17 +72,18 @@ systemctl restart firewalld
 
 # 1 部署节点
 
-## 1.1 Infra-tools
+## 1.1 研发内网域名解析
 
-Infra-tools主要包括NTP、DNS等，docker-compose.yml如下：
+研发内用的DNS有dnsmasq来提供，由nginx进行反向代理。DNS的docker-compose.yml如下：
 
 ```
-version: '3'
-
 services:
   dns:
     image: andyshinn/dnsmasq
     container_name: dns
+    hostname: dns
+    networks:
+      - devops
     privileged: true
     cap_add:
       - NET_ADMIN
@@ -80,9 +91,9 @@ services:
       - "53:53"
       - "53:53/udp"
     volumes:
-      - './etc_dnsmasq.conf:/etc/dnsmasq.conf:rw'
-      - './etc_resolv.dnsmasq:/etc/resolv.dnsmasq:rw'
-      - './etc_dnsmasq.hosts:/etc/dnsmasq.hosts:rw'
+      - './etc_dnsmasq.conf:/etc/dnsmasq.conf'
+      - './etc_resolv.dnsmasq:/etc/resolv.dnsmasq'
+      - './etc_dnsmasq.hosts:/etc/dnsmasq.hosts'
 ```
 
 容器的三个配置文件通过volume的方式与主机当前目录下的配置文件共享。
@@ -119,438 +130,166 @@ nameserver 202.106.0.20
 ... ...
 ```
 
-## 1.2 LDAP
 
-LDAP使用OpenLDAP进行维护，使用phpldapadmin管理界面。docker-compose.yml如下：
+
+## 1.2 反向代理
+
+平台由多个组件构成，涉及多个不同的IP和端口号，为了方便记忆，采用域名+反向代理的配置方式。反向代理用Nginx提供，`docker-compose.yml`如下：
 
 ```
-version: '3'
+services:
+  nginx:
+    image: nginx
+    container_name: nginx
+    hostname: nginx
+    networks:
+      - devops
+#   dns:
+#     - 172.31.0.254
+    privileged: true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d	# 1
+      - ./www:/var/www							# 2
+      - ./ssl:/etc/nginx/ssl				# 3
+```
 
+1. 所有的反向代理配置放在`conf.d`目录下，随着下面各个组件的介绍会继续补充；
+2. 静态页面放在`www`目录下；
+3. 证书放在`ssl`下。
+
+## 1.3 LDAP
+
+LDAP使用OpenLDAP进行维护，使用phpldapadmin管理界面。这一版的LDAP增加了SSL支持，因此需要提供证书。docker-compose.yml如下：
+
+```
 services:
   ldap:
     image: osixia/openldap
     container_name: ldap
+    hostname: ldap
+    networks:
+      - devops
     ports:
       - "389:389"
       - "636:636"
     environment:
-      - LDAP_ORGANISATION=TrustChainTech        # 1
-      - LDAP_DOMAIN=example.com              # 1
-      - LDAP_ADMIN_PASSWORD=admin               # 1
+      - LDAP_ORGANISATION=ExampleCom
+      - LDAP_DOMAIN=example.com
+      - LDAP_ADMIN_PASSWORD=passwd
+      - LDAP_READONLY_USER=true
+      - LDAP_READONLY_USER_USERNAME=readonly
+      - LDAP_READONLY_USER_PASSWORD=passwd
+      - LDAP_TLS_CRT_FILENAME=ldap.example.com.crt		#1
+      - LDAP_TLS_KEY_FILENAME=ldap.example.com.key		#1
+      - LDAP_TLS_CA_CRT_FILENAME=root.example.com.crt	#1
     volumes:
-      - /srv/ldap/var:/var/lib/ldap             # 2
-      - /srv/ldap/etc:/etc/ldap/slapd.d         # 2
+      - ./ssl:/container/service/slapd/assets/certs		#1
+      - ldap-var:/var/lib/ldap
+      - ldap-etc:/etc/ldap/slapd.d
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
   ldap-admin:
     image: osixia/phpldapadmin
     container_name: ldap-admin
-    ports:
-      - "443:443"
+    hostname: ldap-admin
+    depends_on:
+      - ldap
+    networks:
+      - devops
+#   If nginx not on the same "devops" network, uncomment the following two lines.
+#   ports:
+#     - "8080:80"
+#     - "8443:443"
     environment:
       - PHPLDAPADMIN_LDAP_HOSTS=ldap
+      - PHPLDAPADMIN_HTTPS_CRT_FILENAME=ldap.example.com.crt				#1
+      - PHPLDAPADMIN_HTTPS_KEY_FILENAME=ldap.example.com.key				#1
+      - PHPLDAPADMIN_HTTPS_CA_CRT_FILENAME=root.example.com.crt			#1
+    volumes:
+      - ./ssl:/container/service/phpldapadmin/assets/apache2/certs	#1
+      - ldap-admin:/var/www/phpldapadmin
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 ```
 
-1. 默认的LDAP组织是`example.org`，可以通过参数指定初始化的组织及管理员密码，管理员账号是`admin`；
-2. OpenLDAP需要保存的数据主要是`/etc`下的配置和`/var`下的数据。
+1. 证书文件通过卷挂载，并使用环境变量进行指定。
 
-## 1.3 JIRA
+## 1.4 JIRA & Confluence
 
-docker-compose.yml如下：
+以Jira为例，docker-compose.yml如下：
 
 ```
 version: '3'
 
 services:
-  mysql:
+  mysql-jira:
     image: mysql:5.7
-    container_name: mysql
+    container_name: mysql-jira
     environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=jiradb
-      - MYSQL_USER=jira
-      - MYSQL_PASSWORD=jira
+      - MYSQL_ROOT_PASSWORD=devops
+      - MYSQL_DATABASE=jiradb				#1
+      - MYSQL_USER=jira							#1
+      - MYSQL_PASSWORD=devops				#1
+    networks:
+      - devops
     volumes:
-      - /srv/mysql:/var/lib/mysql                                                # 1
-    command: ["--character-set-server=utf8", "--collation-server=utf8_bin"]      # 2
-
+      - ./mysql/mysqld_jira.cnf:/etc/mysql/conf.d/mysqld_jira.cnf		#3
+      - mysql-jira:/var/lib/mysql
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
   jira:
-    image: blacklabelops/jira:7.8.1
-    privileged: true
+    image: atlassian/jira-software
     container_name: jira
+    hostname: jira
     depends_on:
-      - mysql
+      - mysql-jira
     ports:
-      - "80:8080"
-    user: 0:0                                                                     # 3
+      - "8081:8080"
     environment:
-      - DOCKER_WAIT_HOST=mysql                                                    # 4
-      - DOCKER_WAIT_PORT=3306                                                     # 4
-      - JIRA_DATABASE_URL=mysql://jira@mysql/jiradb
-      - JIRA_DB_PASSWORD=jira
-      - "CATALINA_OPTS= -Xms2g -Xmx6g"                                            # 5
+      - JVM_MINIMUM_MEMORY=512m
+      - JVM_MAXIMUM_MEMORY=2048m
+      - ATL_PROXY_NAME=jira.example.com #2
+      - ATL_PROXY_PORT=443							#2
+      - ATL_TOMCAT_SCHEME=https					#2
+      - ATL_TOMCAT_SECURE=true					#2
+    networks:
+      - devops
     volumes:
-      - /srv/jira:/var/atlassian/jira                                             # 1
+      - ./mysql/mysql-connector-java-5.1.48.jar:/opt/atlassian/jira/lib/mysql-connector-java-5.1.48.jar																#3
+      - jira:/var/atlassian/application-data/jira
 ```
 
-1. 将容器内数据挂载到`/srv`下；
-2. JIRA要求数据库charset为`utf8`；
-3. 使用root账号，否则JIRA中部分功能会因账号权限问题不可用；
-4. 等待MySQL服务可用后再启动JIRA；
-5. JIRA默认为JVM分配的内存非常低，通过参数指定。
-
-> 一个docker-compose配置文件中的多个Service是共享网络的，可以通过`network`指定，否则会默认创建一个`<文件夹名>_default`的bridge网络。
-服务间可以通过服务名进行通讯，如JIRA容器中ping mysql是OK的。
-
-> 关于Jira的破解可参考：https://blog.csdn.net/get_set/article/details/80856922
-
-## 1.3 Confluence
-
-docker-compose.yml如下：
+1. 启动MySQL的时候即初始化好数据库和用户；
+2. Jira前方经过反向代理，而反向代理配置了SSL；
+3. Jira对数据库有编码的要求，`./mysql/mysqld_jira.cnf`中可见：
 
 ```
-version: '3'
+[client]
+default-character-set = utf8mb4
 
-services:
-  mysql:
-    image: mysql:5.7
-    container_name: mysql
-    environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=confluencedb
-      - MYSQL_USER=confluence
-      - MYSQL_PASSWORD=confluence
-    volumes:
-      - /srv/mysql:/var/lib/mysql
-    command: ["--character-set-server=utf8", "--collation-server=utf8_bin", "--default-storage-engine=INNODB", "--max_allowed_packet=256M", "--innodb_log_file_size=2GB", "--binlog_format=row", "--transaction-isolation=READ-COMMITTED"]   # 1
+[mysql]
+default-character-set = utf8mb4
 
-  confluence:
-    image: blacklabelops/confluence:6.8.2
-    privileged: true
-    container_name: confluence
-    depends_on:
-      - mysql
-    ports:
-      - "80:8090"
-      - "8091:8091"
-    user: 0:0
-    environment:
-      - DOCKER_WAIT_HOST=mysql
-      - DOCKER_WAIT_PORT=3306
-      - CATALINA_PARAMETER1=-Xms                                                # 2
-      - CATALINA_PARAMETER_VALUE1=2g                                            # 2
-      - CATALINA_PARAMETER1=-Xmx                                                # 2
-      - CATALINA_PARAMETER_VALUE1=4g                                            # 2
-    volumes:
-      - /srv/confluence:/var/atlassian/confluence
+[mysqld]
+character-set-client-handshake = FALSE
+character-set-server = utf8mb4
+collation-server = utf8mb4_bin
 ```
 
-1. Confluence对数据库的要求，通过MySQL提供的参数可以指定；
-2. 配置为JVM分配的内存。
-
-> 关于Confluence的破解可参考：https://blog.csdn.net/get_set/article/details/80856922
-
-## 1.4 Gerrit
-
-### 1.4.1 使用Gerrit官方镜像
-
-#### 1.4.1.1 docker-compose.yml及相关配置文件
-
-gerrit使用官方Docker镜像，使用postgres作为数据库。docker-compose.yml如下：
-
-```
-version: '3'
-
-services:
-  gerrit:
-    image: gerritcodereview/gerrit:2.14.8                                  # 1
-    container_name: gerrit
-    hostname: gerrit.example.com
-    privileged: true
-    dns:
-      - 172.31.0.254                                                       # 2
-    ports:
-      - "29418:29418"
-      - "80:8080"
-    depends_on:
-      - postgres
-    volumes:
-     - /srv/gerrit/etc:/var/gerrit/etc
-     - /srv/gerrit/git:/var/gerrit/git
-     - /srv/gerrit/index:/var/gerrit/index
-     - /srv/gerrit/cache:/var/gerrit/cache
-    #entrypoint: java -jar /var/gerrit/bin/gerrit.war init -d /var/gerrit  # 4
-
-  postgres:
-    image: postgres:9.6
-    container_name: postgres
-    environment:
-      - POSTGRES_USER=gerrit                                                # 3
-      - POSTGRES_PASSWORD=gerrit                                            # 3
-      - POSTGRES_DB=reviewdb                                                # 3
-    volumes:
-      - /srv/postgres:/var/lib/postgresql/data
-```
-
-1. gerrit比较新的2.15版存在重启会刷掉gerrit主配置文件中canonicalWebUrl的问题，暂时使用2.14.8版本；
-2. 指定DNS，因为Gerrit要通过域名连接ldap；
-3. 启动postgresql的时候创建`gerrit`用户，并创建`reviewdb`数据库。
-4. 初始化命令，后边会介绍到。
-
-Gerrit要连接OpenLDAP，因此需要在启动前将配置文件提供出来。
-
-`/etc/gerrit.config`是Gerrit的主配置文件，定义了数据库、LDAP等配置，对应主机的`/srv/gerrit/etc/gerrit.config`：
-
-```
-[gerrit]
-        basePath = git
-        canonicalWebUrl = http://gerrit.example.com
-
-[database]
-        type = postgresql
-        hostname = postgres
-        database = reviewdb
-        username = gerrit
-
-[index]
-        type = LUCENE
-
-[auth]
-        type = ldap
-        gitBasicAuth = true
-
-[ldap]
-        server = ldap://ldap.example.com
-        username = cn=admin,dc=example,dc=com
-        accountBase = dc=example,dc=com
-        accountPattern = (&(objectClass=person)(uid=${username}))
-        accountFullName = displayName
-        accountEmailAddress = mail
-
-[sshd]
-        listenAddress = *:29418
-
-[httpd]
-        listenUrl = http://*:8080/
-
-[cache]
-        directory = cache
-
-[container]
-        user = root
-```
-
-`/etc/secure.config`对应主机的`/srv/gerrit/etc/secure.config`，用于单独配置数据库和LDAP的密码：
-
-```
-[database]
-        password = gerrit
-
-[ldap]
-        password = admin
-```
-
-#### 1.4.1.2 启动过程
-
-1. Gerrit容器使用ID为1000的`gerrit`用户，因此首先确保主机存在该用户（主要用于volume权限）。
-2. 创建目录`mkdir -p /srv/gerrit/{etc,git,index,cache}`，并将上述两个配置文件拷到`/srv/gerrit/etc`下，并配置权限给`gerrit`用户：`chown gerrit:gerrit -R /srv/gerrit`。
-3. 启动postgresql：`docker-compose up -d postgres`，可以通过`docker logs -f postgres`观察日志，出现`database system is ready to accept connections`时表示启动完毕。
-4. gerrit第一次启动时需要初始化review-site（即本例中的`/var/gerrit`），取消掉docker-compose.yml中的注释，然后运行`docker-compose up gerrit`启动gerrit。
-5. 初始化完成后，再把docker-compose.yml中初始化的那行注释掉，然后用后台方式启动gerrit即可：`docker-compose up -d gerrit`。
-
-不过以上过程都做成了脚本，直接执行源码中的`newly-install.sh`脚本即可。
-
-#### 1.4.2 使用`openfrontier/gerrit`
-
-更加推荐使用这个镜像，因为部署起来更加简洁。
-
-这个例子使用MySQL，相对来说也更加熟悉。直接看docker-compose.yml文件吧：
-
-```
-version: "3"
-
-services:
-  gerrit:
-    image: openfrontier/gerrit
-    container_name: gerrit
-    hostname: gerrit.example.com
-    privileged: true
-    dns:
-      - 172.31.0.254
-    ports:
-      - "29418:29418"
-      - "80:8080"
-#    user: 0:0
-    depends_on:
-      - mysql
-    environment:
-      - WEBURL=http://gerrit.example.com
-      - DATABASE_TYPE=mysql                         # 1
-      - DATABASE_HOSTNAME=mysql
-      - DATABASE_DATABASE=reviewdb
-      - DATABASE_USERNAME=gerrit
-      - DATABASE_PASSWORD=gerrit
-      - AUTH_TYPE=LDAP                               # 2
-      - LDAP_SERVER=ldap://ldap.example.com
-      - LDAP_ACCOUNTBASE=dc=example,dc=com
-      - LDAP_USERNAME=cn=admin,dc=example,dc=com
-      - LDAP_PASSWORD=<password of admin>
-      - LDAP_ACCOUNTPATTERN=(&(objectClass=inetorgperson)(cn=$${username}))        # 3
-      - LDAP_ACCOUNTFULLNAME=displayName
-      - LDAP_ACCOUNTEMAILADDRESS=mail
-    volumes:
-     - /srv/gerrit:/var/gerrit/review_site
-
-  mysql:
-    image: mysql:5.7
-    container_name: mysql
-    environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=reviewdb
-      - MYSQL_USER=gerrit
-      - MYSQL_PASSWORD=gerrit
-    volumes:
-      - /srv/mysql:/var/lib/mysql
-#    command: ["--character-set-server=utf8", "--collation-server=utf8_bin", "--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
-    command: ["--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]         # 4
-```
-
-1. 环境变量支持全部的DATABASE配置参数；
-2. 配置为LDAP方式，支持全部的LDAP配置参数；
-3. 注意`$`要用`$$`转义；
-4. 配置`sql-mode`，否则会报错。使用5.6版本的mysql也可以解决该问题。
-
-> 注意：即使使用了LDAP，第一次登录的LDAP账号也会称为管理员。
-
-### 1.4.3 配置为HTTP的登录认证方式
-
-Gerrit支持多种登录认证方式，默认的方式是`OpenID`，上一小节介绍的是`LDAP`的方式，此外还有`HTTP`和`DEVELOPMENT_BECOME_ANY_ACCOUNT`方式，后者通常用于测试，生产环境不能使用，这一节介绍一下`HTTP`的认证方式。
-
-`HTTP`的认证是通过HTTP反向代理来实现的，通常使用`apache2`或`nginx`来进行代理，认证则基于`htpasswd`来做。这里我们使用`nginx`进行代理，`docker-compose.yml`文件如下：
-
-```
-version: "3"
-
-services:
-  gerrit:
-    image: openfrontier/gerrit
-    container_name: gerrit
-    hostname: review.example.com
-    privileged: true
-    dns:
-      - 172.31.0.254
-    ports:
-      - "29418:29418"
-      - "8080:8080"                                  # 1
-#    user: 0:0
-    depends_on:
-      - mysql
-    environment:
-      - WEBURL=http://review.example.com
-      - DATABASE_TYPE=mysql
-      - DATABASE_HOSTNAME=mysql
-      - DATABASE_DATABASE=reviewdb
-      - DATABASE_USERNAME=gerrit
-      - DATABASE_PASSWORD=gerrit
-      - AUTH_TYPE=HTTP                                 # 2
-      - HTTPD_LISTENURL=proxy-http://*:8080/           # 3
-#      - GERRIT_INIT_ARGS=--install-plugin=download-commands,Events-log,its-jira
-    volumes:
-      - /srv/gerrit:/var/gerrit/review_site
-
-  mysql:
-    image: mysql:5.7
-    container_name: mysql
-    environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=reviewdb
-      - MYSQL_USER=gerrit
-      - MYSQL_PASSWORD=gerrit
-    volumes:
-      - /srv/mysql:/var/lib/mysql
-    command: ["--sql-mode=ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"]
-
-  nginx:
-    image: nginx
-    container_name: nginx
-    hostname: review.example.com
-    dns:
-      - 172.31.0.254
-    privileged: true
-    ports:
-      - "80:80"                                         # 1
-    volumes:
-      - ./nginx-gerrit.conf:/etc/nginx/conf.d/default.conf     # 4
-      - ./gerrit-users:/etc/nginx/conf.d/gerrit-users          # 5
-```
-
-1. Gerrit使用8080端口，而下方nginx使用80端口，nginx将80请求映射到gerrit的8080端口；
-2. 认证方式使用`HTTP`；
-3. 告知gerrit代理监听URL；
-4. `nginx-gerrit.conf`中定义了如何进行代理；
-5. `gerrit-users`为用户名和加密密码信息。
-
-`nginx-gerrit.conf`内容如下：
-
-```
-server {
-    listen       80;
-    server_name  review.example.com;
-
-    location /login/ {                                   # 1
-        auth_basic "Gerrit Code Review";
-        auth_basic_user_file /etc/nginx/conf.d/gerrit-users;              # 2
-        proxy_pass http://gerrit:8080;                   # 3
-    }
-
-    location / {                                         # 4
-        proxy_pass        http://gerrit:8080;            # 3
-        proxy_set_header  X-Forwarded-For $remote_addr;
-        proxy_set_header  Host $host;
-    }
-}
-```
-
-1. 对于`/login/`配置为基于htpasswd文件的认证方式；
-2. 基于htpasswd命令生成的用户信息文件来认证；
-3. 认证通过后代理到gerrit的8080；
-4. 对于`/`路径下的请求直接进行转发。
-
-**部署步骤：**
-
-1. 首先使用`docker-compose up -d mysql`启动mysql；
-2. 待mysql启动完毕（可以通过logs命令查看），然后执行`docker-compose up -d`启动剩下的gerrit和nginx。
-
-> centos使用如下命令安装htpasswd：
-> `yum install -y httpd-tools
-> ubuntu使用如下命令安装htpasswd：
-> `apt install -y apache2-utils
-> 然后使用如下命令配置用户名和密码
-> `htpasswd -m gerrit_users <user>`
-> 然后输入两次密码
-
-**部署之后：**
-
-* 使用admin登录，则其成为管理员用户，配置SSH公钥，用于后续配置：
-
-```
-# 判断SSH公钥是否配置OK
-ssh -p 29418 admin@review.example.com
-```
-
-* 安装插件
-
-```
-cd /srv/gerrit/plugins
-wget https://gerrit-ci.gerritforge.com/job/plugin-its-jira-bazel-stable-2.15/lastSuccessfulBuild/artifact/bazel-genfiles/plugins/its-jira/its-jira.jar
-wget https://gerrit-ci.gerritforge.com/job/plugin-its-base-bazel-stable-2.15/lastSuccessfulBuild/artifact/bazel-genfiles/plugins/its-base/its-base.jar
-wget https://gerrit-ci.gerritforge.com/job/plugin-importer-bazel-stable-2.15/lastSuccessfulBuild/artifact/bazel-genfiles/plugins/importer/importer.jar
-```
-
-* 用户配置邮件：新创建的用户登录后无法更新邮箱，需要管理员通过如下方式更新邮箱
-
-```
-ssh -p 29418 admin@review.example.com gerrit set-account --add-email liukang@sjclian.com liukang
-```
+> [Jira和Confluence的破解方法](https://blog.csdn.net/get_set/article/details/80856922)，仅用于学习，企业用户请购买正版。
 
 ## 1.5 Gitlab
 
@@ -581,42 +320,48 @@ systemctl restart firewalld.service
 使用gitlab官方docker镜像，docker-compose.yml文件如下：
 
 ```
-version: '3'
-
 services:
-  mysql:
+  gitlab:
     image: gitlab/gitlab-ce
     container_name: gitlab
     hostname: gitlab
-    privileged: true
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://gitlab.example.com'	#1
+        nginx['redirect_http_to_https'] = true		#1
     ports:
-      - "22:22"
-      - "80:80"
-      - "443:443"
+      - "2222:22"
+      - "8080:80"
+      - "8443:443"
+    networks:
+      - devops
     volumes:
-      - /srv/gitlab/config:/etc/gitlab      # 1
-      - /srv/gitlab/logs:/var/log/gitlab    # 1
-      - /srv/gitlab/data:/var/opt/gitlab    # 1
+      - gitlab-config:/etc/gitlab								#2
+      - gitlab-logs:/var/log/gitlab							#2
+      - gitlab-data:/var/opt/gitlab							#2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
 ```
 
-1. 挂载目录如下：
+1. 由于gitlab前方有支持SSL的反向代理，external_url为用户使用的地址；此处`GITLAB_OMNIBUS_CONFIG`环境变量可用于提前给出任意`gitlab.rb`中的配置。
+
+挂载目录如下：
 
 | 主机目录 | 容器目录 | 内容 |
-| --- | --- | --- | --- |
-| /srv/gitlab/data | /var/opt/gitlab | 应用数据 |
-| /srv/gitlab/logs | /var/log/gitlab | 日志 |
-| /srv/gitlab/config | /etc/gitlab | GitLab配置文件 | 
+| --- | --- | --- |
+| gitlab-data | /var/opt/gitlab | 应用数据 |
+| gitlab-logs | /var/log/gitlab | 日志 |
+| gitlab-config | /etc/gitlab | GitLab配置文件 |
 
-### 1.5.3 配置gitlab
+### 1.5.3 gitlab与LDAP的集成
 
-由于配置文件已经共享到宿主机，因此可以通过编辑`/srv/gitlab/config/gitlab.rb`配置gitlab：
+由于配置文件已经共享到宿主机，因此可以通过编辑`gitlab-config`卷中的`gitlab.rb`配置gitlab：
 
 ```
-# 配置external_url，外部访问地址，比如每个git库的clone地址就是基于它拼出来的
-external_url 'http://gitlab.example.com'
-# 配置LDAP
-gitlab_rails['ldap_enabled'] = true
-
 ###! **remember to close this block with 'EOS' below**
 gitlab_rails['ldap_servers'] = YAML.load <<-'EOS'
   main: # 'main' is the GitLab 'provider ID' of this LDAP server
@@ -647,77 +392,13 @@ EOS
 docker exec -it gitlab gitlab-ctl reconfigure
 ```
 
-# 1.6 上网代理
+## 1.6 SonarQube
 
-这里使用SOCKS-5来做外网的代理，支持PAC模式和全局代理模式。
+Sonarqube没有太多可解释的，与Jira或Confluence类似，就是典型的一个数据库+一个应用的部署方式，数据库启动时自动创建database和相应的用户的密码；SonarQube为官方镜像。
 
-1. 代理使用sslocal，代理服务器的配置通过json文件传给该命令，端口为1080；
-2. sslocal的代理为socks协议，因此使用privoxy转为http协议，端口为8118，该代理地址可用于全局代理模式的配置；
-3. PAC代理模式维护一个list，只有list中的网址是走代理的，通过一个pac文件来维护，同时指定了SOCKS代理的地址，将该pac文件用http服务提供出来，使用者直接配置该pac文件的http地址即可使用PAC方式上网。
+SonarQube中用到的插件可以到[SonarQube插件库](https://docs.sonarqube.org/display/PLUG/Plugin+Library)下载，并复制到`sonar-extensions`卷的`plugins`目录下，并重启使其生效。
 
-以上，第1,2由`sgrio/alpine-sslocalproxy`容器提供；第3条就起一个`httpd`容器，将pac文件用http访问即可。docker-compose.yml如下：
-
-```
-version: '3'
-
-services:
-  proxy:
-    image: sgrio/alpine-sslocalproxy
-    container_name: proxy
-    privileged: true
-    ports:
-      - "1080:1080"
-      - "8118:8118"
-    volumes:
-      - './ss-client.json:/etc/shadowsocks-libev/config.json:rw'    # 1
-  httpd:
-    image: httpd:2.4
-    container_name: httpd
-    privileged: true
-    cap_add:
-      - NET_ADMIN
-    ports:
-      - "80:80"
-    volumes:
-      - './index.html:/usr/local/apache2/htdocs/index.html:rw'       # 2
-```
-
-1. 代理服务器的配置通过volume挂载[`ss-client.json`]()文件实现；
-2. pac的内容放在[`index.html`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/index.html)中通过volume挂载文件放到httpd的web目录下，从而可以直接通过地址访问。
-
-pac的生成通过[`gen-pac.sh`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/gen-pac.sh)命令生成，该命令会从`gfwlist`拉取一份常用的代理网站地址list，另外还会加上[`user-rules.txt`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/user-rules.txt)中自定义的list，生成pac文件`index.html`。
-
-> 代码中的代理配置信息（`infra/ss-client.json`）已经过期。
-
-# 1.7 Jenkins
-
-Jenkins基于官方提供的容器进行部署，参考文档：https://jenkins.io/doc/book/installing/#downloading-and-running-jenkins-in-docker。
-
-直接上`docker-compose.yml`：
-
-```
-version: "3"
-
-services:
-  jenkins:
-    image: jenkinsci/blueocean
-    container_name: jenkins
-    hostname: jenkins.example.com
-    privileged: true
-    user: 0:0
-    dns:
-      - 172.31.0.254
-    ports:
-      - "80:8080"
-      - "50000:50000"
-    volumes:
-     - /var/run/docker.sock:/var/run/docker.sock            # 1
-     - /srv/jenkins:/var/jenkins_home
-```
-
-1. 由于Jenkins运行在容器内，同时Jenkins任务有会以容器作为slave，因此需要映射宿主机的`docker.sock`，从而在起容器的时候仍然是在宿主机上起容器来跑CI。
-
-# 1.8 Nexus
+## 1.7 Nexus
 
 仍然采用容器的部署方式，采用官方镜像`sonatype/nexus3`。
 
@@ -726,80 +407,67 @@ services:
 因此`docker-compose.yml`文件内容如下：
 
 ```
-version: "3"
-
 services:
   nexus:
     image: sonatype/nexus3
     container_name: nexus
-    hostname: nexus.example.com
-    privileged: true
-    dns:
-      - 172.31.0.254
+    hostname: nexus
+    networks:
+      - devops
+    ports:
+      - "8081:8081"
     volumes:
-     - /srv/nexus-data:/nexus-data
+     - nexus-data:/nexus-data
 
-  nginx:
-    image: nginx
-    container_name: nginx
-    dns:
-      - 172.31.0.254
+  registry:
+    image: registry:2
+    container_name: registry
+    networks:
+      - devops
+    ports:
+      - 5000:5000
+    environment:
+      - REGISTRY_PROXY_REMOTEURL="https://docker.mirrors.ustc.edu.cn"
+    volumes:
+      - registry:/var/lib/registry
+```
+
+## 1.8 上网代理
+
+由于研发人员经常需要上Google，或查询各种技术官网资料，因此一个统一的上网代理还是有必要的。
+
+这里使用SOCKS5来做外网的代理，支持PAC模式和全局代理模式。
+
+1. 代理使用sslocal，代理服务器的配置通过json文件传给该命令，端口为1080；
+2. sslocal的代理为socks协议，因此使用privoxy转为http协议，端口为8118，该代理地址可用于全局代理模式的配置；
+3. PAC代理模式维护一个list，只有list中的网址是走代理的，通过一个pac文件来维护，同时指定了SOCKS代理的地址，将该pac文件用http服务提供出来，使用者直接配置该pac文件的http地址即可使用PAC方式上网。
+
+以上，第1,2由`sgrio/alpine-sslocalproxy`容器提供；第3条就起一个`httpd`容器，将pac文件用http访问即可。docker-compose.yml如下：
+
+```
+services:
+  proxy:
+    image: sgrio/alpine-sslocalproxy
+    container_name: proxy
+    hostname: proxy
+    networks:
+      - devops
     privileged: true
     ports:
-      - "80:80"
+      - "1080:1080"
+      - "8118:8118"
     volumes:
-      - ./nginx_conf.d:/etc/nginx/conf.d        # 1
+      - './ss-client.json:/etc/shadowsocks-libev/config.json'    # 1
 ```
 
-1. nexus无需将端口映射出来，nginx通过一些配置文件定义如何进行代理。文件内容举例如下：
+1. 代理服务器的配置通过volume挂载[`ss-client.json`]()文件实现。
 
-* nexus本身的代理，将端口8081映射到80：
+### PAC的支持
 
-```
-server {
-    listen       80;
-    server_name  nexus.example.com;
+pac的内容放在`nginx/www/pac`中通过挂载到nginx的目录下，从而可以直接通过地址`proxy.example.com/pac`访问。
 
-    location / {
-        proxy_pass        http://nexus:8081;
-        proxy_set_header  X-Forwarded-For $remote_addr;
-        proxy_set_header  Host $host;
-    }
-}
-```
+pac的生成通过[`gen-pac.sh`](http://gitlab.example.com/infra/infra-docker-compose/blob/master/infra/gen-pac.sh)命令生成，该命令会从`gfwlist`拉取一份常用的代理网站地址list，另外还会加上`whitelist`中自定义的list，生成pac文件`index.html`。
 
-* maven的代理：
+> 代码中的代理配置信息（`infra/ss-client.json`）无效。
 
-```
-server {
-    listen       80;
-    server_name  maven.example.com;
-
-    location / {
-        proxy_pass        http://nexus:8081/repository/maven-public/;
-        proxy_set_header  X-Forwarded-For $remote_addr;
-        proxy_set_header  Host $host;
-    }
-}
-```
-
-> 因此在nexus中配置的maven库（或group）的URL应为：`http://nexus:8081/repository/maven-public/`。
-
-* docker registry的代理：
-
-```
-server {
-    listen       80;
-    server_name  registry.example.com;
-
-    location / {
-        proxy_pass        http://nexus:8081/repository/docker-group/;
-        proxy_set_header  X-Forwarded-For $remote_addr;
-        proxy_set_header  Host $host;
-    }
-}
-```
-
-> 在nexus中，docker的host/proxy也可以配置为指定的端口，这时候相应调整一下`proxy_pass`的配置即可。
-
-其他不再一一列举。
+## 

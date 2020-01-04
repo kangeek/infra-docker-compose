@@ -1,3 +1,4 @@
+.DS_Store
 ss-client.json
 nginx/ssl/
 ldap/ssl/
