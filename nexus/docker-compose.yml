@@ -4,32 +4,33 @@ services:
   nexus:
     image: sonatype/nexus3
     container_name: nexus
-    hostname: nexus.example.com
-    privileged: true
-    dns:
-      - 172.31.0.254
+    hostname: nexus
+    networks:
+      - devops
     ports:
       - "8081:8081"
     volumes:
-     - /srv/nexus-data:/nexus-data
-
-  nginx:
-    image: nginx
-    container_name: nginx
-    dns:
-      - 172.31.0.254
-    privileged: true
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx_conf.d:/etc/nginx/conf.d
+     - nexus-data:/nexus-data
 
   registry:
     image: registry:2
     container_name: registry
+    networks:
+      - devops
     ports:
       - 5000:5000
     environment:
       - REGISTRY_PROXY_REMOTEURL="https://docker.mirrors.ustc.edu.cn"
     volumes:
-      - /srv/registry:/var/lib/registry
+      - registry:/var/lib/registry
+
+volumes:
+  nexus-data:
+    name: nexus-data
+  registry:
+    name: registry
+
+networks:
+  devops:
+    name: devops
+    external: true
